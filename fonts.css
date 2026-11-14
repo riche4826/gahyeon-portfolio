@@ -6,3 +6,20 @@ body,button,input,select,textarea{font-family:var(--font-brand)}
 .serif{font-family:var(--font-brand);font-style:normal;font-weight:400;letter-spacing:-.045em}
 .columns .num,.steps li:before{font-family:var(--font-brand);font-style:normal;font-weight:400}
 .hero h1 .serif{display:inline-block;font-size:.83em;letter-spacing:-.055em}
+
+/* Expressive brand display typography: MaruBuri + Cormorant Garamond. */
+@font-face{font-family:MaruBuri;src:url("fonts/MaruBuri-Regular.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:MaruBuri;src:url("fonts/MaruBuri-SemiBold.woff2") format("woff2");font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:"Cormorant Garamond";src:url("fonts/CormorantGaramond-normal.woff2") format("woff2");font-weight:300 700;font-style:normal;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Cormorant Garamond";src:url("fonts/CormorantGaramond-italic.woff2") format("woff2");font-weight:300 700;font-style:italic;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+:root{--font-display:"Cormorant Garamond","MaruBuri",serif}
+h1,h2,h3,.statement .large,.brand-type strong{font-family:var(--font-display);font-weight:600;letter-spacing:-.035em;line-height:1.45}
+.hero h1{line-height:1.4;font-weight:400}.hero h1 .serif{font-family:var(--font-display);font-size:1.12em;font-style:italic;font-weight:500;letter-spacing:-.045em;line-height:1.12;margin-top:14px}
+.serif{font-family:var(--font-display);font-style:normal;font-weight:500;letter-spacing:-.035em}
+.brand-type strong{font-size:21px}.brand-form .brand-name{font-family:"Cormorant Garamond",serif;font-size:13px;letter-spacing:.12em;font-weight:600;margin-top:5px}
+.site-header nav a{font-family:"Cormorant Garamond",serif;font-size:20px;font-weight:600;letter-spacing:.015em}
+.columns .num,.steps li:before{font-family:"Cormorant Garamond",serif;font-style:italic;font-size:30px}
+.project h3{font-size:28px}.project h3:lang(en){font-size:34px}.brand-display h2{font-size:36px}
+.auth-panel h2,dialog h2{font-family:var(--font-display)}
+@media(max-width:620px){.hero h1{font-size:38px}.hero h1 .serif{font-size:1.05em}.site-header nav a{font-size:18px}.brand-form .brand-name{font-size:12px}.page-head h1{font-size:37px}.project h3{font-size:27px}}
+@media(max-width:380px){.hero h1{font-size:33px}.page-head h1{font-size:33px}}
