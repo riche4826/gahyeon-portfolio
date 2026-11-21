@@ -7,7 +7,9 @@ const work=params.get('work');
 const workTitle=work==='space'?'숲과 도시의 만남':work==='product'?'StyleHANGER':'';
 let auth,db,F,A,user=null,operator=false,ready=false,posts=[],comments=[],currentPost=null,limitCount=20;
 let stopPosts,stopThread,stopComments,mode=null,deleting=null,authGeneration=0;
-let stopRole;
+let operatorRef;
+let slotKnown = false;
+let operatorUid = null;
 let signingUp = false;
 const canWrite = () => ready;
 const canManage = () => ready && operator;
@@ -61,7 +63,7 @@ function subscribeThread(){
 function showRole(isOperator) {
  operator = isOperator;
  $('account-toggle').hidden = operator;
- $('signup-toggle').hidden = operator;
+ $('signup-toggle').hidden = !slotKnown || operatorUid !== null;
  if (operator) setSignupOpen(false);
  $('logout').hidden = !operator;
  $('account-label').textContent = operator ? '현가현 · 운영자' : '방문자 글쓰기';
@@ -70,25 +72,39 @@ function showRole(isOperator) {
  if ($('delete-dialog').open && !operator) $('delete-dialog').close();
  renderThread();
 }
-function updateAccount(next) {
+async function syncRole() {
  const generation = ++authGeneration;
- stopRole?.();
- user = next;
- showRole(false);
- if (!next || signingUp) return;
- async function deny() {
-  if (generation !== authGeneration) return;
-  showRole(false);
-  await A.signOut(auth);
-  $('auth-form').hidden = false;
-  $('auth-message').textContent = '운영자로 등록된 계정만 로그인할 수 있습니다.';
- }
- stopRole = F.onSnapshot(F.doc(db,'admins',next.uid), {includeMetadataChanges:true}, snapshot => {
-  if (generation !== authGeneration || snapshot.metadata.fromCache) return;
-  if (!snapshot.exists() || snapshot.data().enabled !== true) { void deny(); return; }
-  showRole(true);
+ const allowed = slotKnown && user != null && user.uid === operatorUid;
+ showRole(allowed);
+ if (allowed) {
   $('auth-form').hidden = true;
- }, deny);
+  return;
+ }
+ if (!user || !slotKnown || signingUp) return;
+ try {
+  await A.signOut(auth);
+  if (generation !== authGeneration && auth.currentUser) return;
+  $('auth-form').hidden = false;
+  $('auth-message').textContent = '등록된 운영자 계정으로 로그인해 주세요.';
+ } catch (error) { status(messageFor(error), true); }
+}
+function watchOperator() {
+ operatorRef = F.doc(db, 'guestbook', 'operator');
+ F.onSnapshot(operatorRef, {includeMetadataChanges:true}, snapshot => {
+  if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+  slotKnown = true;
+  operatorUid = snapshot.exists() ? snapshot.data().uid : null;
+  if (operatorUid !== null && !signingUp) setSignupOpen(false);
+  void syncRole();
+ }, error => {
+  slotKnown = false;
+  showRole(false);
+  status(messageFor(error), true);
+ });
+ A.onAuthStateChanged(auth, next => {
+  user = next;
+  void syncRole();
+ });
 }
 function openEditor(kind,data=null){
  if(!ready || (kind.startsWith('edit') && !operator)) return;
@@ -138,7 +154,7 @@ function setSignupOpen(open) {
 $('signup-toggle').onclick = () => setSignupOpen($('signup-form').hidden);
 $('signup-form').addEventListener('submit', async event => {
  event.preventDefault();
- if (!ready || signingUp || operator) return;
+ if (!ready || signingUp || !slotKnown || operatorUid !== null) return;
  const email = $('signup-email').value.trim();
  const password = $('signup-password').value;
  const message = $('signup-message');
@@ -152,23 +168,36 @@ $('signup-form').addEventListener('submit', async event => {
  $('account-toggle').disabled = true;
  $('signup-toggle').disabled = true;
  message.textContent = '계정을 만들고 있습니다.';
- let created = false;
+ let registered = false;
  try {
-  await A.createUserWithEmailAndPassword(auth, email, password);
-  created = true;
+  let credential;
+  try {
+   credential = await A.createUserWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+   if (error.code !== 'auth/email-already-in-use') throw error;
+   credential = await A.signInWithEmailAndPassword(auth, email, password);
+  }
+  const uid = credential.user.uid;
+  await F.runTransaction(db, async transaction => {
+   const slot = await transaction.get(operatorRef);
+   if (!slot.exists()) transaction.set(operatorRef, {uid});
+   else if (slot.data().uid !== uid) throw new Error('operator-taken');
+  });
+  registered = true;
+  operatorUid = uid;
+  user = auth.currentUser;
   $('signup-form').reset();
-  await A.signOut(auth);
-  $('auth-email').value = email;
-  message.textContent = '계정을 만들었습니다. 사이트 소유자가 승인하면 운영자 로그인을 이용해 주세요.';
+  status('첫 운영자로 등록했습니다. 지금부터 방명록을 관리할 수 있습니다.');
  } catch (error) {
-  const errors = {
-   'auth/email-already-in-use': '이미 등록된 이메일입니다. 운영자 로그인 또는 비밀번호 재설정을 이용해 주세요.',
-   'auth/weak-password': '비밀번호가 너무 짧습니다. 더 긴 비밀번호를 입력해 주세요.',
-   'auth/password-does-not-meet-requirements': '사이트의 비밀번호 정책에 맞는 비밀번호를 입력해 주세요.'
-  };
-  message.textContent = created ? '계정이 생성되었습니다. 새로고침한 후 승인 상태를 확인해 주세요.' : errors[error.code] || messageFor(error);
+  if (auth.currentUser) await A.signOut(auth);
+  const detail = error.message === 'operator-taken' ? '이미 첫 운영자가 등록되었습니다.' :
+   error.code === 'auth/weak-password' ? '더 긴 비밀번호를 입력해 주세요.' : messageFor(error);
+  message.textContent = detail;
+  status(detail, true);
  } finally {
   signingUp = false;
+  if (registered || operatorUid !== null) setSignupOpen(false);
+  void syncRole();
   $('signup-submit').disabled = false;
   $('account-toggle').disabled = false;
   $('signup-toggle').disabled = false;
@@ -197,7 +226,7 @@ async function start(){
   const app=appModule.initializeApp(firebaseConfig);
   if(appCheckSiteKey){const check=await import(sdk+'firebase-app-check.js');check.initializeAppCheck(app,{provider:new check.ReCaptchaEnterpriseProvider(appCheckSiteKey),isTokenAutoRefreshEnabled:true});}
   db=F.getFirestore(app);auth=A.getAuth(app);auth.languageCode='ko';ready=true;$('signup-submit').disabled=false;$('signup-message').textContent='';$('new-post').disabled=false;$('account-toggle').disabled=false;
-  A.onAuthStateChanged(auth,updateAccount);if(threadId)subscribeThread();else subscribePosts();
+  watchOperator();if(threadId)subscribeThread();else subscribePosts();
  }catch(error){status('게시판에 연결하지 못했습니다. 인터넷 연결 또는 사이트 연결 설정을 확인해 주세요.',true);empty($('posts'),'연결을 기다리고 있습니다.','잠시 후 페이지를 새로고침해 주세요.');}
 }
 start();
