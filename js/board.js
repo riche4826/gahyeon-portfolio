@@ -8,6 +8,7 @@ const workTitle=work==='space'?'숲과 도시의 만남':work==='product'?'Style
 let auth,db,F,A,user=null,operator=false,ready=false,posts=[],comments=[],currentPost=null,limitCount=20;
 let stopPosts,stopThread,stopComments,mode=null,deleting=null,authGeneration=0;
 let stopRole;
+let signingUp = false;
 const canWrite = () => ready;
 const canManage = () => ready && operator;
 const postLabel = post => post.title || post.body.split('\n')[0].slice(0, 80);
@@ -60,6 +61,8 @@ function subscribeThread(){
 function showRole(isOperator) {
  operator = isOperator;
  $('account-toggle').hidden = operator;
+ $('signup-toggle').hidden = operator;
+ if (operator) setSignupOpen(false);
  $('logout').hidden = !operator;
  $('account-label').textContent = operator ? '현가현 · 운영자' : '방문자 글쓰기';
  $('account-detail').textContent = operator ? '방명록과 댓글을 수정하거나 삭제할 수 있습니다.' : '이름과 내용만 입력하면 누구나 방명록을 남길 수 있습니다.';
@@ -72,7 +75,7 @@ function updateAccount(next) {
  stopRole?.();
  user = next;
  showRole(false);
- if (!next) return;
+ if (!next || signingUp) return;
  async function deny() {
   if (generation !== authGeneration) return;
   showRole(false);
@@ -124,7 +127,54 @@ $('close-editor').onclick=$('cancel-editor').onclick=()=>$('editor-dialog').clos
 $('new-post').onclick=()=>openEditor('new-post');$('new-comment').onclick=()=>openEditor('comment');
 $('search-form').onsubmit=e=>{e.preventDefault();renderPosts();};$('clear-search').onclick=()=>{$('search-query').value='';renderPosts();};
 $('load-more').onclick=()=>{limitCount+=20;subscribePosts();};
-$('account-toggle').onclick=()=>{$('auth-form').hidden=!$('auth-form').hidden;if(!$('auth-form').hidden)$('auth-email').focus();};
+function setSignupOpen(open) {
+ $('signup-form').hidden = !open;
+ $('signup-toggle').setAttribute('aria-expanded', String(open));
+ if (open) {
+  $('auth-form').hidden = true;
+  $('signup-email').focus();
+ }
+}
+$('signup-toggle').onclick = () => setSignupOpen($('signup-form').hidden);
+$('signup-form').addEventListener('submit', async event => {
+ event.preventDefault();
+ if (!ready || signingUp || operator) return;
+ const email = $('signup-email').value.trim();
+ const password = $('signup-password').value;
+ const message = $('signup-message');
+ if (password !== $('signup-confirm').value) {
+  message.textContent = '비밀번호가 일치하지 않습니다.';
+  $('signup-confirm').focus();
+  return;
+ }
+ signingUp = true;
+ $('signup-submit').disabled = true;
+ $('account-toggle').disabled = true;
+ $('signup-toggle').disabled = true;
+ message.textContent = '계정을 만들고 있습니다.';
+ let created = false;
+ try {
+  await A.createUserWithEmailAndPassword(auth, email, password);
+  created = true;
+  $('signup-form').reset();
+  await A.signOut(auth);
+  $('auth-email').value = email;
+  message.textContent = '계정을 만들었습니다. 사이트 소유자가 승인하면 운영자 로그인을 이용해 주세요.';
+ } catch (error) {
+  const errors = {
+   'auth/email-already-in-use': '이미 등록된 이메일입니다. 운영자 로그인 또는 비밀번호 재설정을 이용해 주세요.',
+   'auth/weak-password': '비밀번호가 너무 짧습니다. 더 긴 비밀번호를 입력해 주세요.',
+   'auth/password-does-not-meet-requirements': '사이트의 비밀번호 정책에 맞는 비밀번호를 입력해 주세요.'
+  };
+  message.textContent = created ? '계정이 생성되었습니다. 새로고침한 후 승인 상태를 확인해 주세요.' : errors[error.code] || messageFor(error);
+ } finally {
+  signingUp = false;
+  $('signup-submit').disabled = false;
+  $('account-toggle').disabled = false;
+  $('signup-toggle').disabled = false;
+ }
+});
+$('account-toggle').onclick=()=>{setSignupOpen(false);$('auth-form').hidden=!$('auth-form').hidden;if(!$('auth-form').hidden)$('auth-email').focus();};
 $('auth-form').addEventListener('submit',async event=>{
  event.preventDefault();if(!ready)return;const button=event.submitter || event.currentTarget.querySelector('button[type="submit"]');const email=$('auth-email').value.trim(), password=$('auth-password').value;
  button.disabled=true;
@@ -146,7 +196,7 @@ async function start(){
   const [appModule,firestoreModule,authModule]=await Promise.all([import(sdk+'firebase-app.js'),import(sdk+'firebase-firestore.js'),import(sdk+'firebase-auth.js')]);F=firestoreModule;A=authModule;
   const app=appModule.initializeApp(firebaseConfig);
   if(appCheckSiteKey){const check=await import(sdk+'firebase-app-check.js');check.initializeAppCheck(app,{provider:new check.ReCaptchaEnterpriseProvider(appCheckSiteKey),isTokenAutoRefreshEnabled:true});}
-  db=F.getFirestore(app);auth=A.getAuth(app);auth.languageCode='ko';ready=true;$('new-post').disabled=false;$('account-toggle').disabled=false;
+  db=F.getFirestore(app);auth=A.getAuth(app);auth.languageCode='ko';ready=true;$('signup-submit').disabled=false;$('signup-message').textContent='';$('new-post').disabled=false;$('account-toggle').disabled=false;
   A.onAuthStateChanged(auth,updateAccount);if(threadId)subscribeThread();else subscribePosts();
  }catch(error){status('게시판에 연결하지 못했습니다. 인터넷 연결 또는 사이트 연결 설정을 확인해 주세요.',true);empty($('posts'),'연결을 기다리고 있습니다.','잠시 후 페이지를 새로고침해 주세요.');}
 }
